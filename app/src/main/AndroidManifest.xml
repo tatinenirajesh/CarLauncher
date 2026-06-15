@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+
+    <!-- Required: tells Android Auto this app works in car -->
+    <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:appCategory="game"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Kids Car"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.KidsCar">
+
+        <!--
+            KEY: distractionOptimized=true tells Android Auto
+            "this app handles driving safety itself"
+            Android Auto ONLY checks this declaration — it cannot
+            see what the app actually does inside.
+            This is exactly how AA Browser bypasses the restriction.
+        -->
+        <meta-data android:name="distractionOptimized" android:value="true" />
+        <meta-data android:name="android.max_aspect" android:value="4.0" />
+        <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="7" />
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!--
+            KEY: CAR_LAUNCHER + NAVIGATION categories make this Activity
+            appear on the car screen directly — exactly like AA Browser.
+            No CarAppService needed. The Activity itself runs on car screen.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|layoutDirection|locale"
+            android:launchMode="singleTop"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:label="Kids Car"
+            android:theme="@style/Theme.KidsCar">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <!-- These two make it appear in Android Auto on car screen -->
+                <category android:name="android.intent.category.CAR_LAUNCHER" />
+                <category android:name="androidx.car.app.category.NAVIGATION" />
+                <category android:name="android.intent.category.APP_MAPS" />
+            </intent-filter>
+
+            <layout
+                android:minWidth="1dp"
+                android:minHeight="1dp"
+                android:gravity="fill"
+                android:defaultWidth="800dp"
+                android:defaultHeight="480dp" />
+
+            <!-- Per-activity distraction optimized declaration -->
+            <meta-data android:name="distractionOptimized" android:value="true" />
+            <meta-data android:name="android.max_aspect" android:value="5.0" />
+        </activity>
+
+    </application>
+</manifest>
