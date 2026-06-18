@@ -1,14 +1,18 @@
 package com.kidscar.launcher;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -22,31 +26,22 @@ import androidx.appcompat.app.AppCompatActivity;
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
-    private FrameLayout rootFrame;
     private View launcherView;
     private FrameLayout webFrame;
     private TextView btnBack;
+    private FrameLayout rootFrame;
 
-    // ── KEY: Use YouTube embed URL, NOT youtube.com/tv ────────────────────────
-    // youtube.com/tv detects Android Auto and pauses while driving.
-    // The embed URL (/embed/) has NO driving detection — it's designed for
-    // embedding in websites/apps, not subject to AA restrictions.
-    // We open the YouTube search page via embed-friendly URL.
     private static final String[][] APPS = {
-        {"YouTube",    "#C0392B", "https://www.youtube.com/embed/?listType=search&list=funny+cartoons"},
-        {"YT Kids",    "#E91E8C", "https://www.youtubekids.com"},
-        {"Netflix",    "#E50914", "https://www.netflix.com"},
-        {"Spotify",    "#1DB954", "https://open.spotify.com"},
-        {"Hotstar",    "#0F3D91", "https://www.hotstar.com"},
-        {"Prime",      "#00A8E0", "https://www.primevideo.com"},
-        {"Zee5",       "#6B2D8B", "https://www.zee5.com"},
-        {"Browser",    "#1565C0", "https://www.google.com"},
+        {"YouTube",   "#C0392B", "https://www.youtube.com/embed/?listType=search&list=cartoons+kids"},
+        {"YT Kids",   "#E91E8C", "https://www.youtubekids.com"},
+        {"Netflix",   "#E50914", "https://www.netflix.com"},
+        {"Spotify",   "#1DB954", "https://open.spotify.com"},
+        {"Hotstar",   "#0F3D91", "https://www.hotstar.com"},
+        {"Prime",     "#00A8E0", "https://www.primevideo.com"},
+        {"Zee5",      "#6B2D8B", "https://www.zee5.com"},
+        {"Browser",   "#1565C0", "https://www.google.com"},
     };
 
-    // ── KEY: Pretend to be a Samsung Smart TV browser ─────────────────────────
-    // Android Auto driving detection looks for Android/mobile user agents.
-    // A TV user agent is never subject to driving restrictions.
-    // YouTube and Netflix have no driving detection for Smart TVs.
     private static final String TV_UA =
         "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) " +
         "AppleWebKit/538.1 (KHTML, like Gecko) " +
@@ -55,16 +50,40 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Force fullscreen BEFORE setContentView
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN |
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN |
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        );
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Root — FrameLayout so views stack on top of each other
+        // Get real screen dimensions
+        DisplayMetrics dm = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getRealMetrics(dm);
+        int screenW = dm.widthPixels;
+        int screenH = dm.heightPixels;
+
+        // Root covers entire physical screen
         rootFrame = new FrameLayout(this);
         rootFrame.setBackgroundColor(Color.parseColor("#0D0F14"));
         setContentView(rootFrame);
 
-        // ── WebView — added FIRST so it's behind launcher ─────────────────────
+        // Force root to full screen size
+        rootFrame.post(() -> {
+            ViewGroup.LayoutParams lp = rootFrame.getLayoutParams();
+            lp.width  = screenW;
+            lp.height = screenH;
+            rootFrame.setLayoutParams(lp);
+        });
+
+        // WebView — full screen
         webFrame = new FrameLayout(this);
+        webFrame.setBackgroundColor(Color.BLACK);
         webFrame.setVisibility(View.GONE);
 
         webView = new WebView(this);
@@ -78,86 +97,53 @@ public class MainActivity extends AppCompatActivity {
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
         ws.setAllowContentAccess(true);
-        ws.setAllowFileAccess(true);
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setCacheMode(WebSettings.LOAD_DEFAULT);
-
-        // Smart TV user agent — bypasses ALL driving detection
         ws.setUserAgentString(TV_UA);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // Auto-resume paused videos every second
+                view.evaluateJavascript(
+                    "(function(){" +
+                    "setInterval(function(){" +
+                    "  var v=document.querySelectorAll('video');" +
+                    "  for(var i=0;i<v.length;i++){" +
+                    "    if(v[i].paused&&v[i].readyState>=2)v[i].play();" +
+                    "  }" +
+                    "  var o=document.querySelectorAll('[class*=driving],[class*=restrict]');" +
+                    "  for(var j=0;j<o.length;j++)o[j].style.display='none';" +
+                    "},800);" +
+                    "})();", null);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view,
-                    android.webkit.WebResourceRequest request) {
-                // Handle all navigation inside WebView
-                view.loadUrl(request.getUrl().toString());
+                    android.webkit.WebResourceRequest req) {
+                view.loadUrl(req.getUrl().toString());
                 return true;
             }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
-            private View mCustomView;
-            private CustomViewCallback mCustomViewCallback;
-
+            private View customView;
             @Override
             public void onShowCustomView(View view, CustomViewCallback cb) {
-                // Fullscreen video support
-                mCustomView = view;
-                mCustomViewCallback = cb;
+                customView = view;
                 webFrame.addView(view, new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT));
                 webView.setVisibility(View.GONE);
-                btnBack.bringToFront();
             }
-
             @Override
             public void onHideCustomView() {
-                if (mCustomView != null) {
-                    webFrame.removeView(mCustomView);
-                    mCustomView = null;
+                if (customView != null) {
+                    webFrame.removeView(customView);
+                    customView = null;
                 }
                 webView.setVisibility(View.VISIBLE);
-            }
-        });
-
-        // ── DRIVING DETECTION REMOVER ─────────────────────────────────────────
-        // Inject JavaScript after every page load to:
-        // 1. Remove YouTube's driving mode overlay
-        // 2. Prevent the "video paused" message
-        // 3. Auto-resume if paused
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                // Remove driving restriction overlays
-                view.evaluateJavascript(
-                    "(function() {" +
-                    // Auto-resume any paused video
-                    "  setInterval(function() {" +
-                    "    var videos = document.querySelectorAll('video');" +
-                    "    for(var i=0; i<videos.length; i++) {" +
-                    "      if(videos[i].paused && videos[i].readyState >= 2) {" +
-                    "        videos[i].play();" +
-                    "      }" +
-                    "    }" +
-                    // Remove any overlay divs that block content
-                    "    var overlays = document.querySelectorAll(" +
-                    "      '[class*=\"driving\"],[class*=\"restriction\"],[id*=\"driving\"]'" +
-                    "    );" +
-                    "    for(var j=0; j<overlays.length; j++) {" +
-                    "      overlays[j].style.display='none';" +
-                    "    }" +
-                    "  }, 1000);" +
-                    "})();",
-                    null);
-            }
-
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view,
-                    android.webkit.WebResourceRequest request) {
-                view.loadUrl(request.getUrl().toString());
-                return true;
             }
         });
 
@@ -165,85 +151,81 @@ public class MainActivity extends AppCompatActivity {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
 
-        // WebView takes FULL screen
         rootFrame.addView(webFrame, new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
 
-        // ── Back button — floats on top of WebView ────────────────────────────
+        // Back button — top-left corner floating
         btnBack = new TextView(this);
-        btnBack.setText("  ◀ Back  ");
+        btnBack.setText(" ◀ Back ");
         btnBack.setTextColor(Color.WHITE);
-        btnBack.setTextSize(14f);
-        btnBack.setBackgroundColor(Color.parseColor("#DD000000"));
-        btnBack.setPadding(20, 10, 20, 10);
+        btnBack.setTextSize(13f);
+        btnBack.setBackgroundColor(Color.parseColor("#CC000000"));
+        btnBack.setPadding(16, 8, 16, 8);
         btnBack.setVisibility(View.GONE);
         btnBack.setOnClickListener(v -> showLauncher());
         FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT);
         backLp.gravity = Gravity.TOP | Gravity.START;
-        backLp.topMargin = 8;
+        backLp.topMargin  = 8;
         backLp.leftMargin = 8;
         rootFrame.addView(btnBack, backLp);
 
-        // ── Launcher — floats on top, FULL screen ─────────────────────────────
-        launcherView = buildLauncher();
+        // Launcher — full screen overlay on top
+        launcherView = buildLauncher(screenW, screenH);
         rootFrame.addView(launcherView, new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
     }
 
-    // ── Build launcher grid ───────────────────────────────────────────────────
-    private View buildLauncher() {
+    private View buildLauncher(int screenW, int screenH) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.parseColor("#0D0F14"));
 
-        // Header
+        // Header bar
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setBackgroundColor(Color.parseColor("#161A24"));
-        header.setPadding(40, 28, 40, 28);
+        header.setPadding(48, 30, 48, 30);
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView ttl = new TextView(this);
         ttl.setText("🚗  Kids Car");
         ttl.setTextColor(Color.WHITE);
-        ttl.setTextSize(22f);
+        ttl.setTextSize(24f);
         ttl.setTypeface(null, Typeface.BOLD);
         header.addView(ttl, new LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView hint = new TextView(this);
-        hint.setText("Tap to open on car screen");
-        hint.setTextColor(Color.parseColor("#A0AABA"));
-        hint.setTextSize(12f);
-        header.addView(hint);
+        TextView sub = new TextView(this);
+        sub.setText("Tap to open on car screen");
+        sub.setTextColor(Color.parseColor("#A0AABA"));
+        sub.setTextSize(13f);
+        header.addView(sub);
 
         root.addView(header, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        // Grid — 2 rows × 4 cols
+        // Card grid — 2 rows × 4 cols
         for (int row = 0; row < 2; row++) {
             LinearLayout rowL = new LinearLayout(this);
             rowL.setOrientation(LinearLayout.HORIZONTAL);
-            rowL.setPadding(16, 16, 16, 0);
-            root.addView(rowL, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+            rowL.setPadding(20, 20, 20, 0);
 
             for (int col = 0; col < 4; col++) {
                 int idx = row * 4 + col;
                 if (idx >= APPS.length) break;
 
-                final String name  = APPS[idx][0];
-                final String color = APPS[idx][1];
-                final String url   = APPS[idx][2];
+                final String appName  = APPS[idx][0];
+                final String appColor = APPS[idx][1];
+                final String appUrl   = APPS[idx][2];
 
                 GradientDrawable bg = new GradientDrawable();
-                bg.setColor(Color.parseColor(color));
-                bg.setCornerRadius(24f);
+                bg.setColor(Color.parseColor(appColor));
+                bg.setCornerRadius(28f);
 
                 FrameLayout card = new FrameLayout(this);
                 card.setBackground(bg);
@@ -251,9 +233,9 @@ public class MainActivity extends AppCompatActivity {
                 card.setFocusable(true);
 
                 TextView lbl = new TextView(this);
-                lbl.setText(name);
+                lbl.setText(appName);
                 lbl.setTextColor(Color.WHITE);
-                lbl.setTextSize(18f);
+                lbl.setTextSize(20f);
                 lbl.setTypeface(null, Typeface.BOLD);
                 lbl.setGravity(Gravity.CENTER);
 
@@ -261,23 +243,23 @@ public class MainActivity extends AppCompatActivity {
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT));
 
-                card.setOnClickListener(v -> openUrl(url));
+                card.setOnClickListener(v -> openUrl(appUrl));
 
                 LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
-                cp.setMargins(10, 0, 10, 16);
+                cp.setMargins(12, 0, 12, 20);
                 rowL.addView(card, cp);
             }
+
+            root.addView(rowL, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         }
 
         return root;
     }
 
-    // ── Open app ──────────────────────────────────────────────────────────────
     private void openUrl(String url) {
-        // Hide launcher completely
         launcherView.setVisibility(View.GONE);
-        // Show WebView full screen
         webFrame.setVisibility(View.VISIBLE);
         btnBack.setVisibility(View.VISIBLE);
         btnBack.bringToFront();
@@ -302,8 +284,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @Override protected void onResume()  {
+    @Override
+    protected void onResume() {
         super.onResume();
+        // Keep enforcing fullscreen on resume
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         if (webView != null) webView.onResume();
     }
 
